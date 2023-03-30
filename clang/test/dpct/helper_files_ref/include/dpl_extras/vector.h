@@ -175,7 +175,124 @@ private:
 
   void _set_capacity_and_alloc() {
     _capacity = ::std::max(_size * 2, _min_capacity());
-    _storage = _alloc.allocate(_capacity);
+    _storage = ::std::allocator_traits<Allocator>::allocate(_alloc, _capacity);
+  }
+
+
+
+  template <class, class _Alloc, class ..._Args>
+  struct __has_construct_impl : ::std::false_type { };
+
+  template <class _Alloc, class ..._Args>
+  struct __has_construct_impl<decltype(
+      (void)std::declval<_Alloc>().construct(std::declval<_Args>()...)
+  ), _Alloc, _Args...> : ::std::true_type { };
+
+  template <class _Alloc, class ..._Args>
+  struct __has_construct : __has_construct_impl<void, _Alloc, _Args...> { };
+
+  // __has_destroy
+  template <class _Alloc, class _Pointer, class = void>
+  struct __has_destroy : ::std::false_type { };
+
+  template <class _Alloc, class _Pointer>
+  struct __has_destroy<_Alloc, _Pointer, decltype(
+      (void)std::declval<_Alloc>().destroy(std::declval<_Pointer>())
+  )> : ::std::true_type { };
+
+  // end of taken from libc++
+
+  //apply default constructor if no override is provided
+  template <typename _Allocator, typename DataT>
+  typename ::std::enable_if_t<!__has_construct<_Allocator, T*>::value, void>
+  device_allocator_construct(_Allocator alloc, DataT* p)
+  {
+    ::new((void*)p) T();
+  }
+
+  //use provided default construct call if it exists
+  template <typename _Allocator, typename DataT>
+  typename ::std::enable_if_t<__has_construct<_Allocator, T*>::value, void>
+  device_allocator_construct(_Allocator alloc, DataT* p)
+  {
+    alloc.construct(p);
+  }
+
+  //apply constructor if no override is provided
+  template <typename _Allocator, typename DataT, typename T_in>
+  typename ::std::enable_if_t<!__has_construct<_Allocator, DataT*, T_in>::value, void>
+  device_allocator_construct(_Allocator alloc, DataT* p, T_in arg)
+  {
+    ::new((void*)p) T(arg);
+  }
+
+  //use provided construct call if it exists
+  template <typename _Allocator, typename DataT, typename T_in>
+  typename ::std::enable_if_t<__has_construct<_Allocator, DataT*, T_in>::value, void>
+  device_allocator_construct(_Allocator alloc, DataT* p, T_in arg)
+  {
+    alloc.construct(p, arg);
+  }
+
+
+  //apply default destructor if no destroy override is provided
+  template <typename _Allocator, typename DataT>
+  typename ::std::enable_if_t<!__has_destroy<_Allocator, DataT*>::value, void>
+  device_allocator_destroy(_Allocator alloc, DataT* p)
+  {
+    p->~T();
+  }
+
+  //use provided destroy call if it exists
+  template <typename _Allocator, typename DataT>
+  typename ::std::enable_if_t<__has_destroy<_Allocator, DataT*>::value, void>
+  device_allocator_destroy(_Allocator alloc, DataT* p)
+  {
+    alloc.destroy(p);
+  }
+
+  void _construct(size_type n, size_type start_idx = 0){
+    if (n > 0)
+    {
+      get_default_queue().submit([&](sycl::handler &cgh) {
+        cgh.parallel_for(n, [=](sycl::id<1> i) {
+          device_allocator_construct(_alloc, _storage + start_idx + i);
+        });
+      });
+    }
+  }
+
+  void _construct(size_type n, const T &value, size_type start_idx = 0){
+    if (n > 0)
+    {
+      get_default_queue().submit([&](sycl::handler &cgh) {
+        cgh.parallel_for(n, [=, _alloc](sycl::id<1> i) {
+          device_allocator_construct(_alloc, _storage + start_idx + i, value);
+        });
+      });
+    }
+  }
+
+  template <typename DevIter>
+  void _construct(DevIter first, DevIter last, size_type start_idx = 0){
+    int num_eles = ::std::distance(first,last);
+    if (num_eles > 0)
+    {
+      get_default_queue().submit([&](sycl::handler &cgh) {
+        cgh.parallel_for(num_eles, [=, _alloc](sycl::id<1> i) {
+          device_allocator_construct(_alloc, _storage + start_idx + i, first + i);
+        });
+      });
+    }
+  }
+
+
+  template <typename HostIter>
+  void _construct_from_host(HostIter first, HostIter last, size_type start_idx = 0){
+    sycl::buffer<T, 1> buf(first, last);
+    auto buf_first = oneapi::dpl::begin(buf);
+    auto buf_last = oneapi::dpl::end(buf);
+    _construct(buf_first, buf_last, start_idx);
   }
 
 public:
@@ -189,23 +306,14 @@ public:
       : _alloc(get_default_queue()), _size(0), _capacity(_min_capacity()) {
     _set_capacity_and_alloc();
   }
-  ~device_vector() /*= default*/ { _alloc.deallocate(_storage, _capacity); };
+  ~device_vector() /*= default*/ { ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity); };
   explicit device_vector(size_type n) : device_vector(n, T()) {}
   explicit device_vector(size_type n, const T &value)
       : _alloc(get_default_queue()), _size(n) {
     _set_capacity_and_alloc();
-    if (_size > 0) {
-      ::std::fill(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                begin(), end(), T(value));
-    }
+    _construct(n, value);
   }
-  device_vector(const device_vector &other) : _alloc(get_default_queue()) {
-    _size = other.size();
-    _capacity = other.capacity();
-    _storage = _alloc.allocate(_capacity);
-    ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-              other.begin(), other.end(), begin());
-  }
+
   device_vector(device_vector &&other)
       : _alloc(get_default_queue()), _size(other.size()),
         _capacity(other.capacity()), _storage(other._storage) {
@@ -214,22 +322,17 @@ public:
     other._storage = nullptr;
   }
 
+// TODO: check if this is ok for both random_access_iterators and non random_access_iterators
   template <typename InputIterator>
   device_vector(InputIterator first,
                 typename ::std::enable_if<
                     internal::is_iterator<InputIterator>::value &&
-                        !::std::is_pointer<InputIterator>::value &&
-                        ::std::is_same<typename ::std::iterator_traits<
-                                         InputIterator>::iterator_category,
-                                     ::std::random_access_iterator_tag>::value,
+                        !::std::is_pointer<InputIterator>::value,
                     InputIterator>::type last)
       : _alloc(get_default_queue()) {
     _size = ::std::distance(first, last);
     _set_capacity_and_alloc();
-    if (_size > 0) {
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                first, last, begin());
-    }
+    _construct(first, last);
   }
 
   template <typename InputIterator>
@@ -243,69 +346,39 @@ public:
       auto ptr_type = sycl::get_pointer_type(first, get_default_context());
       if (ptr_type != sycl::usm::alloc::host &&
           ptr_type != sycl::usm::alloc::unknown) {
-        ::std::copy(
-            oneapi::dpl::execution::make_device_policy(get_default_queue()),
-            first, last, begin());
+        _construct(first, last);
       } else {
-        sycl::buffer<T, 1> buf(first, last);
-        auto buf_first = oneapi::dpl::begin(buf);
-        auto buf_last = oneapi::dpl::end(buf);
-        ::std::copy(
-            oneapi::dpl::execution::make_device_policy(get_default_queue()),
-            buf_first, buf_last, begin());
+        _construct_from_host(first, last);
       }
     }
   }
 
-  template <typename InputIterator>
-  device_vector(InputIterator first,
-                typename ::std::enable_if<
-                    internal::is_iterator<InputIterator>::value &&
-                        !::std::is_pointer<InputIterator>::value &&
-                        !::std::is_same<typename ::std::iterator_traits<
-                                          InputIterator>::iterator_category,
-                                      ::std::random_access_iterator_tag>::value,
-                    InputIterator>::type last)
-      : _alloc(get_default_queue()), _size(::std::distance(first, last)) {
-    _set_capacity_and_alloc();
-    ::std::vector<T> _tmp(first, last);
-    if (_size > 0) {
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                _tmp.begin(), _tmp.end(), this->begin());
-    }
-  }
-
   template <typename OtherAllocator>
-  device_vector(const device_vector<T, OtherAllocator> &v)
-      : _alloc(get_default_queue()), _storage(v.real_begin()), _size(v.size()),
-        _capacity(v.capacity()) {}
+  device_vector(const device_vector<T, OtherAllocator> &other)
+      : _alloc(get_default_queue()) {
+    _size = other.size();
+    _capacity = other.capacity();
+    _storage = ::std::allocator_traits<Allocator>::allocate(_alloc, _capacity);
+    _construct(other.begin(), other.end());
+  }
 
   template <typename OtherAllocator>
   device_vector(::std::vector<T, OtherAllocator> &v)
       : _alloc(get_default_queue()), _size(v.size()) {
     _set_capacity_and_alloc();
-    if (_size > 0) {
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                v.begin(), v.end(), this->begin());
-    }
+    _construct_from_host(v.begin(), v.end());
   }
 
   template <typename OtherAllocator>
   device_vector &operator=(const ::std::vector<T, OtherAllocator> &v) {
     resize(v.size());
-    if (_size > 0) {
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                v.begin(), v.end(), begin());
-    }
+    _construct_from_host(v.begin(), v.end());
     return *this;
   }
   device_vector &operator=(const device_vector &other) {
     // Copy assignment operator:
     resize(other.size());
-    if (_size > 0) {
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                other.begin(), other.end(), begin());
-    }
+    _construct(other.begin(), other.end());
     return *this;
   }
   device_vector &operator=(device_vector &&other) {
@@ -336,21 +409,21 @@ public:
   void reserve(size_type n) {
     if (n > capacity()) {
       // allocate buffer for new size
-      auto tmp = _alloc.allocate(2 * n);
+      auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc, 2 * n);
       // copy content (old buffer to new buffer)
       ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
                 begin(), end(), tmp);
       // deallocate old memory
-      _alloc.deallocate(_storage, _capacity);
+      ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity);
       _storage = tmp;
       _capacity = 2 * n;
     }
   }
   void resize(size_type new_size, const T &x = T()) {
     reserve(new_size);
-    if (_size < new_size) {
-      ::std::fill(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                begin() + _size, begin() + new_size, x);
+    if (new_size > size())
+    {
+      _construct(new_size - size(), x, size());
     }
     _size = new_size;
   }
@@ -367,13 +440,13 @@ public:
   void shrink_to_fit(void) {
     if (_size != capacity()) {
       size_type tmp_capacity = ::std::max(_size, _min_capacity());
-      auto tmp = _alloc.allocate(tmp_capacity);
+      auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc,tmp_capacity);
       if (_size > 0) {
         ::std::copy(
             oneapi::dpl::execution::make_device_policy(get_default_queue()),
             begin(), end(), tmp);
       }
-      _alloc.deallocate(_storage, _capacity);
+      ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity);
       _storage = tmp;
       _capacity = tmp_capacity;
     }
@@ -414,14 +487,14 @@ public:
     if (m <= 0) {
       return end();
     }
-    auto tmp = _alloc.allocate(m);
+    auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc, m);
     // copy remainder to temporary buffer.
     ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
               last, end(), tmp);
     // override (erase) subsequence in storage.
     ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
               tmp, tmp + m, first);
-    _alloc.deallocate(tmp, m);
+    ::std::allocator_traits<Allocator>::deallocate(_alloc, tmp, m);
     _size -= n;
     return begin() + first.get_idx() + n;
   }
@@ -434,14 +507,13 @@ public:
   void insert(iterator position, size_type n, const T &x) {
     if (position == end()) {
       resize(size() + n);
-      ::std::fill(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                end() - n, end(), x);
+      _construct(n, x, size() - n);
     } else {
       auto i_n = ::std::distance(begin(), position);
       // allocate temporary storage
       auto m = ::std::distance(position, end());
       // will throw if position is not inside active vector
-      auto tmp = _alloc.allocate(m);
+      auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc, m);
       // copy remainder
       ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
                 position, end(), tmp);
@@ -450,12 +522,13 @@ public:
       // resizing might invalidate position
       position = begin() + position.get_idx();
 
-      ::std::fill(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                position, position + n, x);
+      //TODO: Is this OK? can we assume that the above and below copy is equivalent to std::move?
+      // otherwise we are constructing on top of copied out data, and will be destructing data which was copied
+      _construct(n, x, position.get_idx());
 
       ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
                 tmp, tmp + m, position + n);
-      _alloc.deallocate(tmp, m);
+      ::std::allocator_traits<Allocator>::deallocate(_alloc, tmp, m);
     }
   }
   template <typename InputIterator>
@@ -466,12 +539,13 @@ public:
     auto n = ::std::distance(first, last);
     if (position == end()) {
       resize(size() + n);
+      _construct(first, last, size() - n);
       ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
                 first, last, end());
     } else {
       auto m = ::std::distance(position, end());
       // will throw if position is not inside active vector
-      auto tmp = _alloc.allocate(m);
+      auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc,m);
 
       ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
                 position, end(), tmp);
@@ -480,11 +554,11 @@ public:
       // resizing might invalidate position
       position = begin() + position.get_idx();
 
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                first, last, position);
+      _construct(first, last, position.get_idx());
+
       ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
                 tmp, tmp + m, position + n);
-      _alloc.deallocate(tmp, m);
+      ::std::allocator_traits<Allocator>::deallocate(_alloc, tmp, m);
     }
   }
   Allocator get_allocator() const { return _alloc; }
