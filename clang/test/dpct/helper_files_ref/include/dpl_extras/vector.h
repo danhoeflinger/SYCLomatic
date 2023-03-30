@@ -131,8 +131,77 @@ private:
 
 
 //taken from libc++
+  template <class, class _Alloc, class ..._Args>
+  struct __has_construct_impl : ::std::false_type { };
 
-// __has_construct
+  template <class _Alloc, class ..._Args>
+  struct __has_construct_impl<decltype(
+      (void)std::declval<_Alloc>().construct(std::declval<_Args>()...)
+  ), _Alloc, _Args...> : ::std::true_type { };
+
+  template <class _Alloc, class ..._Args>
+  struct __has_construct : __has_construct_impl<void, _Alloc, _Args...> { };
+
+  // __has_destroy
+  template <class _Alloc, class _Pointer, class = void>
+  struct __has_destroy : ::std::false_type { };
+
+  template <class _Alloc, class _Pointer>
+  struct __has_destroy<_Alloc, _Pointer, decltype(
+      (void)std::declval<_Alloc>().destroy(std::declval<_Pointer>())
+  )> : ::std::true_type { };
+
+  // end of taken from libc++
+
+
+  //apply default constructor if no override is provided
+  template <typename _Allocator, typename DataT>
+  typename ::std::enable_if_t<!__has_construct<_Allocator, DataT*>::value, void>
+  device_allocator_construct(DataT* p)
+  {
+    ::new((void*)p) DataT();
+  }
+
+  //use provided default construct call if it exists
+  template <typename _Allocator, typename DataT>
+  typename ::std::enable_if_t<__has_construct<_Allocator, DataT*>::value, void>
+  device_allocator_construct(DataT* p)
+  {
+    _Allocator::construct(p);
+  }
+
+  //apply constructor if no override is provided
+  template <typename _Allocator, typename DataT, typename T_in>
+  typename ::std::enable_if_t<!__has_construct<_Allocator, DataT*, T_in>::value, void>
+  device_allocator_construct(DataT* p, T_in arg)
+  {
+    ::new((void*)p) DataT(arg);
+  }
+
+  //use provided construct call if it exists
+  template <typename _Allocator, typename DataT, typename T_in>
+  typename ::std::enable_if_t<__has_construct<_Allocator, DataT*, T_in>::value, void>
+  device_allocator_construct(_Allocator alloc, DataT* p, T_in arg)
+  {
+    _Allocator::construct(p, arg);
+  }
+
+
+  //apply default destructor if no destroy override is provided
+  template <typename _Allocator, typename DataT>
+  typename ::std::enable_if_t<!__has_destroy<_Allocator, DataT*>::value, void>
+  device_allocator_destroy(DataT* p)
+  {
+    p->~DataT();
+  }
+
+  //use provided destroy call if it exists
+  template <typename _Allocator, typename DataT>
+  typename ::std::enable_if_t<__has_destroy<_Allocator, DataT*>::value, void>
+  device_allocator_destroy(DataT* p)
+  {
+    _Allocator::destroy(p);
+  }
 
 template <typename Iter, typename Void = void> // for non-iterators
 struct is_iterator : std::false_type {};
@@ -178,85 +247,13 @@ private:
     _storage = ::std::allocator_traits<Allocator>::allocate(_alloc, _capacity);
   }
 
-
-
-  template <class, class _Alloc, class ..._Args>
-  struct __has_construct_impl : ::std::false_type { };
-
-  template <class _Alloc, class ..._Args>
-  struct __has_construct_impl<decltype(
-      (void)std::declval<_Alloc>().construct(std::declval<_Args>()...)
-  ), _Alloc, _Args...> : ::std::true_type { };
-
-  template <class _Alloc, class ..._Args>
-  struct __has_construct : __has_construct_impl<void, _Alloc, _Args...> { };
-
-  // __has_destroy
-  template <class _Alloc, class _Pointer, class = void>
-  struct __has_destroy : ::std::false_type { };
-
-  template <class _Alloc, class _Pointer>
-  struct __has_destroy<_Alloc, _Pointer, decltype(
-      (void)std::declval<_Alloc>().destroy(std::declval<_Pointer>())
-  )> : ::std::true_type { };
-
-  // end of taken from libc++
-
-  //apply default constructor if no override is provided
-  template <typename _Allocator, typename DataT>
-  typename ::std::enable_if_t<!__has_construct<_Allocator, T*>::value, void>
-  device_allocator_construct(_Allocator alloc, DataT* p)
-  {
-    ::new((void*)p) T();
-  }
-
-  //use provided default construct call if it exists
-  template <typename _Allocator, typename DataT>
-  typename ::std::enable_if_t<__has_construct<_Allocator, T*>::value, void>
-  device_allocator_construct(_Allocator alloc, DataT* p)
-  {
-    alloc.construct(p);
-  }
-
-  //apply constructor if no override is provided
-  template <typename _Allocator, typename DataT, typename T_in>
-  typename ::std::enable_if_t<!__has_construct<_Allocator, DataT*, T_in>::value, void>
-  device_allocator_construct(_Allocator alloc, DataT* p, T_in arg)
-  {
-    ::new((void*)p) T(arg);
-  }
-
-  //use provided construct call if it exists
-  template <typename _Allocator, typename DataT, typename T_in>
-  typename ::std::enable_if_t<__has_construct<_Allocator, DataT*, T_in>::value, void>
-  device_allocator_construct(_Allocator alloc, DataT* p, T_in arg)
-  {
-    alloc.construct(p, arg);
-  }
-
-
-  //apply default destructor if no destroy override is provided
-  template <typename _Allocator, typename DataT>
-  typename ::std::enable_if_t<!__has_destroy<_Allocator, DataT*>::value, void>
-  device_allocator_destroy(_Allocator alloc, DataT* p)
-  {
-    p->~T();
-  }
-
-  //use provided destroy call if it exists
-  template <typename _Allocator, typename DataT>
-  typename ::std::enable_if_t<__has_destroy<_Allocator, DataT*>::value, void>
-  device_allocator_destroy(_Allocator alloc, DataT* p)
-  {
-    alloc.destroy(p);
-  }
-
   void _construct(size_type n, size_type start_idx = 0){
     if (n > 0)
     {
+      pointer p = _storage;
       get_default_queue().submit([&](sycl::handler &cgh) {
         cgh.parallel_for(n, [=](sycl::id<1> i) {
-          device_allocator_construct(_alloc, _storage + start_idx + i);
+          ::dpct::internal::device_allocator_construct<Allocator, T>(p + start_idx + i);
         });
       });
     }
@@ -265,9 +262,10 @@ private:
   void _construct(size_type n, const T &value, size_type start_idx = 0){
     if (n > 0)
     {
+      pointer p = _storage;
       get_default_queue().submit([&](sycl::handler &cgh) {
-        cgh.parallel_for(n, [=, _alloc](sycl::id<1> i) {
-          device_allocator_construct(_alloc, _storage + start_idx + i, value);
+        cgh.parallel_for(n, [=](sycl::id<1> i) {
+          ::dpct::internal::device_allocator_construct<Allocator, T>(p + start_idx + i, value);
         });
       });
     }
@@ -278,9 +276,10 @@ private:
     int num_eles = ::std::distance(first,last);
     if (num_eles > 0)
     {
+      pointer p = _storage;
       get_default_queue().submit([&](sycl::handler &cgh) {
-        cgh.parallel_for(num_eles, [=, _alloc](sycl::id<1> i) {
-          device_allocator_construct(_alloc, _storage + start_idx + i, first + i);
+        cgh.parallel_for(num_eles, [=](sycl::id<1> i) {
+          ::dpct::internal::device_allocator_construct<Allocator, T, ::std::iterator_traits<DevIter>::value_type>(p + start_idx + i, first + i);
         });
       });
     }
