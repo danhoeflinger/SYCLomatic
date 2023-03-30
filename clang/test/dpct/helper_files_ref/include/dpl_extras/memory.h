@@ -64,26 +64,30 @@ template <typename T> struct device_reference {
   device_reference(value_type &input) : value(input) {}
   template <typename OtherT>
   device_reference &operator=(const device_reference<OtherT> &input) {
-    value = input;
+    __assign_from(input.__get_value());
     return *this;
   };
   device_reference &operator=(const device_reference &input) {
-    T val = input.value;
-    value = val;
+#ifdef __SYCL_DEVICE_ONLY__
+    value = input.value;
+#else
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.copy(&value, input.value, sizeof(value_type)).wait();
+#endif
     return *this;
   };
   device_reference &operator=(const value_type &x) {
-    value = x;
+    __assign_from(x);
     return *this;
   };
   pointer operator&() const { return pointer(&value); };
-  operator value_type() const { return T(value); }
+  operator value_type() const { return __get_value(); }
   device_reference &operator++() {
-    ++value;
+    __assign_from(__get_value()+1);
     return *this;
   };
   device_reference &operator--() {
-    --value;
+    __assign_from(__get_value()+1);
     return *this;
   };
   device_reference operator++(int) {
@@ -97,51 +101,89 @@ template <typename T> struct device_reference {
     return ref;
   };
   device_reference &operator+=(const T &input) {
-    value += input;
-    return *this;
+     __assign_from(__get_value() + input);
+   return *this;
   };
   device_reference &operator-=(const T &input) {
-    value -= input;
+     __assign_from(__get_value() - input);
     return *this;
   };
   device_reference &operator*=(const T &input) {
-    value *= input;
+     __assign_from(__get_value() * input);
     return *this;
   };
   device_reference &operator/=(const T &input) {
-    value /= input;
+     __assign_from(__get_value() / input);
     return *this;
   };
   device_reference &operator%=(const T &input) {
-    value %= input;
+     __assign_from(__get_value() % input);
     return *this;
   };
   device_reference &operator&=(const T &input) {
-    value &= input;
+     __assign_from(__get_value() & input);
     return *this;
   };
   device_reference &operator|=(const T &input) {
-    value |= input;
+     __assign_from(__get_value() | input);
     return *this;
   };
   device_reference &operator^=(const T &input) {
-    value ^= input;
+     __assign_from(__get_value() ^ input);
     return *this;
   };
   device_reference &operator<<=(const T &input) {
-    value <<= input;
+     __assign_from(__get_value() << input);
     return *this;
   };
   device_reference &operator>>=(const T &input) {
-    value >>= input;
+     __assign_from(__get_value() >> input);
     return *this;
   };
   void swap(device_reference &input) {
+#ifdef __SYCL_DEVICE_ONLY__
     T tmp = (*this);
     *this = (input);
     input = (tmp);
+#else
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task([=]() {
+          this->swap(input);
+        }).wait();
+    });
+#endif
   }
   T &value;
+private: 
+#ifdef __SYCL_DEVICE_ONLY //call from the device
+  device_reference &__assign_from(const value_type& from)
+  {
+    value = from;
+    return *this;
+  }
+
+  value_type __get_value() const
+  {
+    return T(value);
+  }
+#else // call from the host
+  device_reference &__assign_from(const value_type& from)
+  {
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.fill(&value, from, 1);
+    return *this;
+  }
+
+  value_type __get_value() const
+  {
+    T tmp;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.memcpy(&tmp, &value, sizeof(T)*1).wait();
+    return T(tmp);
+  }
+
+#endif
 };
 
 template <typename T>

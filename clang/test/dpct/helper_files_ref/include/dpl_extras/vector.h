@@ -25,6 +25,115 @@
 namespace dpct {
 
 namespace internal {
+
+
+template <typename T, size_t Alignment = 0>
+class usm_device_allocator {
+public:
+  using value_type = T;
+  using propagate_on_container_copy_assignment = std::true_type;
+  using propagate_on_container_move_assignment = std::true_type;
+  using propagate_on_container_swap = std::true_type;
+
+public:
+  template <typename U> struct rebind {
+    typedef usm_device_allocator<U, Alignment> other;
+  };
+
+
+  usm_device_allocator() = delete;
+  usm_device_allocator(const sycl::context &Ctxt, const sycl::device &Dev,
+                const sycl::property_list &PropList = {})
+      : MContext(Ctxt), MDevice(Dev), MPropList(PropList) {}
+  usm_device_allocator(const sycl::queue &Q, const sycl::property_list &PropList = {})
+      : MContext(Q.get_context()), MDevice(Q.get_device()),
+        MPropList(PropList) {}
+  usm_device_allocator(const usm_device_allocator &) = default;
+  usm_device_allocator(usm_device_allocator &&) noexcept = default;
+  usm_device_allocator &operator=(const usm_device_allocator &Other) {
+    MContext = Other.MContext;
+    MDevice = Other.MDevice;
+    MPropList = Other.MPropList;
+    return *this;
+  }
+  usm_device_allocator &operator=(usm_device_allocator &&Other) {
+    MContext = std::move(Other.MContext);
+    MDevice = std::move(Other.MDevice);
+    MPropList = std::move(Other.MPropList);
+    return *this;
+  }
+
+  template <class U>
+  usm_device_allocator(const usm_device_allocator<U, Alignment> &Other) noexcept
+      : MContext(Other.MContext), MDevice(Other.MDevice),
+        MPropList(Other.MPropList) {}
+
+  /// Allocates memory.
+  ///
+  /// \param NumberOfElements is a count of elements to allocate memory for.
+  T *allocate(size_t NumberOfElements, const sycl::detail::code_location CodeLoc =
+                                           sycl::detail::code_location::current()) {
+
+    auto Result = reinterpret_cast<T *>(
+        aligned_alloc(getAlignment(), NumberOfElements * sizeof(value_type),
+                      MDevice, MContext, sycl::usm::alloc::device, MPropList, CodeLoc));
+    if (!Result) {
+      throw sycl::exception(sycl::errc::memory_allocation);
+    }
+    return Result;
+  }
+
+  /// Deallocates memory.
+  ///
+  /// \param Ptr is a pointer to memory being deallocated.
+  /// \param Size is a number of elements previously passed to allocate.
+  void deallocate(
+      T *Ptr, size_t,
+      const sycl::detail::code_location CodeLoc = sycl::detail::code_location::current()) {
+    if (Ptr) {
+      free(Ptr, MContext, CodeLoc);
+    }
+  }
+
+  template <class U, size_t AlignmentU>
+  friend bool operator==(const usm_device_allocator<T, Alignment> &One,
+                         const usm_device_allocator<U, AlignmentU> &Two) {
+    return ((One.MContext == Two.MContext) &&
+            (One.MDevice == Two.MDevice));
+  }
+
+  template <class U, size_t AlignmentU>
+  friend bool operator!=(const usm_device_allocator<T, Alignment> &One,
+                         const usm_device_allocator<U, AlignmentU> &Two) {
+    return !((One.MContext == Two.MContext) &&
+             (One.MDevice == Two.MDevice));
+  }
+
+  template <typename Property> bool has_property() const noexcept {
+    return MPropList.has_property<Property>();
+  }
+
+  template <typename Property> Property get_property() const {
+    return MPropList.get_property<Property>();
+  }
+
+private:
+  constexpr size_t getAlignment() const { return sycl::max(alignof(T), Alignment); }
+
+  template <class U, size_t AlignmentU>
+  friend class usm_device_allocator;
+
+  sycl::context MContext;
+  sycl::device MDevice;
+  sycl::property_list MPropList;
+};
+
+
+
+//taken from libc++
+
+// __has_construct
+
 template <typename Iter, typename Void = void> // for non-iterators
 struct is_iterator : std::false_type {};
 
@@ -42,7 +151,7 @@ struct is_iterator<T *> : std::true_type {};
 #ifndef DPCT_USM_LEVEL_NONE
 
 template <typename T,
-          typename Allocator = sycl::usm_allocator<T, sycl::usm::alloc::shared>>
+          typename Allocator = dpct::internal::usm_device_allocator<T>>
 class device_vector {
 public:
   using iterator = device_iterator<T>;
