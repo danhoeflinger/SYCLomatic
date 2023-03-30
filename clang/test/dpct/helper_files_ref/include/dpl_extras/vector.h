@@ -306,7 +306,10 @@ public:
     _set_capacity_and_alloc();
   }
   ~device_vector() /*= default*/ { ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity); };
-  explicit device_vector(size_type n) : device_vector(n, T()) {}
+  explicit device_vector(size_type n) : _alloc(get_default_queue()), _size(n) {
+    _set_capacity_and_alloc();
+    _construct(n);
+  }
   explicit device_vector(size_type n, const T &value)
       : _alloc(get_default_queue()), _size(n) {
     _set_capacity_and_alloc();
