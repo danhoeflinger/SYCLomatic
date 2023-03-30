@@ -294,6 +294,23 @@ private:
     _construct(buf_first, buf_last, start_idx);
   }
 
+  void _destroy(size_type n, size_type start_idx = 0){
+    //only call destroy kernel *only* if custom destroy function is provided
+    if constexpr(::dpct::internal::__has_destroy<Allocator, pointer>::value)
+    {
+      if (n > 0)
+      {
+        pointer p = _storage;
+        get_default_queue().submit([&](sycl::handler &cgh) {
+          cgh.parallel_for(n, [=](sycl::id<1> i) {
+            ::dpct::internal::device_allocator_traits<Allocator>::destroy(p + start_idx + i);
+          });
+        });
+      }
+    } 
+  }
+
+
 public:
   template <typename OtherA> operator ::std::vector<T, OtherA>() const {
     auto __tmp = ::std::vector<T, OtherA>(this->size());
@@ -305,7 +322,10 @@ public:
       : _alloc(get_default_queue()), _size(0), _capacity(_min_capacity()) {
     _set_capacity_and_alloc();
   }
-  ~device_vector() /*= default*/ { ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity); };
+  ~device_vector() /*= default*/ { 
+    _destroy(size());
+    ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity); 
+  }
   explicit device_vector(size_type n) : _alloc(get_default_queue()), _size(n) {
     _set_capacity_and_alloc();
     _construct(n);
@@ -493,6 +513,10 @@ public:
     // copy remainder to temporary buffer.
     ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
               last, end(), tmp);
+
+    auto position = ::std::distance(begin(), first);
+    _destroy(n, position);
+
     // override (erase) subsequence in storage.
     ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
               tmp, tmp + m, first);
