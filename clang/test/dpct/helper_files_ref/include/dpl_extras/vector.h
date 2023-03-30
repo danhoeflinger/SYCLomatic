@@ -128,8 +128,6 @@ private:
   sycl::property_list MPropList;
 };
 
-
-
 //taken from libc++
   template <class, class _Alloc, class ..._Args>
   struct __has_construct_impl : ::std::false_type { };
@@ -153,55 +151,65 @@ private:
 
   // end of taken from libc++
 
+template <typename _Allocator>
+struct device_allocator_traits{
+
 
   //apply default constructor if no override is provided
-  template <typename _Allocator, typename DataT>
+  template <typename DataT>
+  static
   typename ::std::enable_if_t<!__has_construct<_Allocator, DataT*>::value, void>
-  device_allocator_construct(DataT* p)
+  construct(DataT* p)
   {
     ::new((void*)p) DataT();
   }
 
   //use provided default construct call if it exists
-  template <typename _Allocator, typename DataT>
+  template <typename DataT>
+  static
   typename ::std::enable_if_t<__has_construct<_Allocator, DataT*>::value, void>
-  device_allocator_construct(DataT* p)
+  construct(DataT* p)
   {
     _Allocator::construct(p);
   }
 
   //apply constructor if no override is provided
-  template <typename _Allocator, typename DataT, typename T_in>
+  template <typename DataT, typename T_in>
+  static
   typename ::std::enable_if_t<!__has_construct<_Allocator, DataT*, T_in>::value, void>
-  device_allocator_construct(DataT* p, T_in arg)
+  construct(DataT* p, T_in arg)
   {
     ::new((void*)p) DataT(arg);
   }
 
   //use provided construct call if it exists
-  template <typename _Allocator, typename DataT, typename T_in>
+  template <typename DataT, typename T_in>
+  static  
   typename ::std::enable_if_t<__has_construct<_Allocator, DataT*, T_in>::value, void>
-  device_allocator_construct(_Allocator alloc, DataT* p, T_in arg)
+  construct(_Allocator alloc, DataT* p, T_in arg)
   {
     _Allocator::construct(p, arg);
   }
 
 
   //apply default destructor if no destroy override is provided
-  template <typename _Allocator, typename DataT>
+  template <typename DataT>
+  static
   typename ::std::enable_if_t<!__has_destroy<_Allocator, DataT*>::value, void>
-  device_allocator_destroy(DataT* p)
+  destroy(DataT* p)
   {
     p->~DataT();
   }
 
   //use provided destroy call if it exists
-  template <typename _Allocator, typename DataT>
+  template <typename DataT>
+  static
   typename ::std::enable_if_t<__has_destroy<_Allocator, DataT*>::value, void>
-  device_allocator_destroy(DataT* p)
+  destroy(DataT* p)
   {
     _Allocator::destroy(p);
   }
+};
 
 template <typename Iter, typename Void = void> // for non-iterators
 struct is_iterator : std::false_type {};
@@ -253,7 +261,7 @@ private:
       pointer p = _storage;
       get_default_queue().submit([&](sycl::handler &cgh) {
         cgh.parallel_for(n, [=](sycl::id<1> i) {
-          ::dpct::internal::device_allocator_construct<Allocator, T>(p + start_idx + i);
+          ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i);
         });
       });
     }
@@ -265,7 +273,7 @@ private:
       pointer p = _storage;
       get_default_queue().submit([&](sycl::handler &cgh) {
         cgh.parallel_for(n, [=](sycl::id<1> i) {
-          ::dpct::internal::device_allocator_construct<Allocator, T>(p + start_idx + i, value);
+          ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i, value);
         });
       });
     }
@@ -279,7 +287,7 @@ private:
       pointer p = _storage;
       get_default_queue().submit([&](sycl::handler &cgh) {
         cgh.parallel_for(num_eles, [=](sycl::id<1> i) {
-          ::dpct::internal::device_allocator_construct<Allocator, T, ::std::iterator_traits<DevIter>::value_type>(p + start_idx + i, first + i);
+          ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i, first + i);
         });
       });
     }
