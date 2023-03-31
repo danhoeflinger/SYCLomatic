@@ -360,25 +360,6 @@ public:
     _construct(first, last);
   }
 
-  // template <typename InputIterator>
-  // device_vector(InputIterator first,
-  //               typename ::std::enable_if<::std::is_pointer<InputIterator>::value,
-  //                                       InputIterator>::type last)
-  //     : _alloc(get_default_queue()) {
-  //   _size = ::std::distance(first, last);
-  //   _set_capacity_and_alloc();
-  //   if (_size > 0) {
-  //     auto ptr_type = sycl::get_pointer_type(first, get_default_context());
-  //     _construct(first, last);
-  //     // if (ptr_type != sycl::usm::alloc::host &&
-  //     //     ptr_type != sycl::usm::alloc::unknown) {
-  //     //   _construct(first, last);        
-  //     // } else {
-  //     //   _construct_from_host(first, last);
-  //     // }
-  //   }
-  // }
-
   template <typename OtherAllocator>
   device_vector(const device_vector<T, OtherAllocator> &other)
       : _alloc(get_default_queue()) {
@@ -547,8 +528,6 @@ public:
       // resizing might invalidate position
       position = begin() + position.get_idx();
 
-      //TODO: Is this OK? can we assume that the above and below copy is equivalent to std::move?
-      // otherwise we are constructing on top of copied out data, and will be destructing data which was copied
       _construct(n, x, position.get_idx());
 
       ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
