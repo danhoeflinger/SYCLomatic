@@ -240,6 +240,7 @@ public:
   using difference_type =
       typename ::std::iterator_traits<iterator>::difference_type;
   using size_type = ::std::size_t;
+  using allocator_type = Allocator;
 
 private:
   Allocator _alloc;
@@ -348,7 +349,7 @@ public:
   }
 
   device_vector(device_vector &&other)
-      : _alloc(get_default_queue()), _size(other.size()),
+      : _alloc(std::move(other._alloc)), _size(other.size()),
         _capacity(other.capacity()), _storage(other._storage) {
     other._size = 0;
     other._capacity = 0;
@@ -365,7 +366,7 @@ public:
   }
 
   device_vector(const device_vector &other)
-      : _alloc(get_default_queue()) {
+      : _alloc(std::allocator_traits<Allocator>::select_on_container_copy_construction(other._alloc)) {
     _size = other.size();
     _capacity = other.capacity();
     _storage = ::std::allocator_traits<Allocator>::allocate(_alloc, _capacity);
@@ -392,14 +393,23 @@ public:
   }
   device_vector &operator=(const device_vector &other) {
     // Copy assignment operator:
+    if constexpr(::std::allocator_traits<Allocator>::propagate_on_container_copy_assignment::value)
+    {
+      _alloc = other._alloc;
+    }
     resize(other.size());
     _construct(other.begin(), other.end());
     return *this;
   }
   device_vector &operator=(device_vector &&other) {
     // Move assignment operator:
-    device_vector dummy(::std::move(other));
-    this->swap(dummy);
+    if constexpr(::std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value)
+    {
+      _alloc = std::move(other._alloc);
+    }
+    _size = std::move(other._size);
+    _capacity = std::move(other._capacity);
+    _storage = std::move(other._storage);
     return *this;
   }
   size_type size() const { return _size; }
@@ -417,7 +427,10 @@ public:
     ::std::swap(_size, v._size);
     ::std::swap(_capacity, v._capacity);
     ::std::swap(_storage, v._storage);
-    ::std::swap(_alloc, v._alloc);
+    if constexpr (::std::allocator_traits<Allocator>::propagate_on_container_swap::value)
+    {
+      ::std::swap(_alloc, v._alloc);
+    }
   }
   reference operator[](size_type n) { return _storage[n]; }
   const_reference operator[](size_type n) const { return _storage[n]; }
