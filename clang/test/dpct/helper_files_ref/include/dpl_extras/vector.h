@@ -186,7 +186,7 @@ struct device_allocator_traits{
   template <typename DataT, typename T_in>
   static  
   typename ::std::enable_if_t<__has_construct<_Allocator, DataT*, T_in>::value, void>
-  construct(_Allocator alloc, DataT* p, T_in arg)
+  construct(DataT* p, T_in arg)
   {
     _Allocator::construct(p, arg);
   }
@@ -263,7 +263,7 @@ private:
         cgh.parallel_for(n, [=](sycl::id<1> i) {
           ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i);
         });
-      });
+      }).wait();
     }
   }
 
@@ -275,35 +275,31 @@ private:
         cgh.parallel_for(n, [=](sycl::id<1> i) {
           ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i, value);
         });
-      });
+      }).wait();
     }
   }
 
-  template <typename DevIter>
-  void _construct(DevIter first, DevIter last, size_type start_idx = 0){
+  template <typename Iter>
+  void _construct(Iter first, Iter last, size_type start_idx = 0){
     int num_eles = ::std::distance(first,last);
     if (num_eles > 0)
     {
+      //this should properly handle host or device input data
+      auto read_input = oneapi::dpl::__ranges::__get_sycl_range<sycl::access_mode::read, Iter>();
+      auto input_rng = read_input(first, last).all_view();
       pointer p = _storage;
       get_default_queue().submit([&](sycl::handler &cgh) {
+        oneapi::dpl::__ranges::__require_access(cgh, input_rng);
         cgh.parallel_for(num_eles, [=](sycl::id<1> i) {
-          ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i, first + i);
+          ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i, input_rng[i]);
         });
-      });
+      }).wait();
     }
   }
 
-
-  template <typename HostIter>
-  void _construct_from_host(HostIter first, HostIter last, size_type start_idx = 0){
-    sycl::buffer<T, 1> buf(first, last);
-    auto buf_first = oneapi::dpl::begin(buf);
-    auto buf_last = oneapi::dpl::end(buf);
-    _construct(buf_first, buf_last, start_idx);
-  }
-
   void _destroy(size_type n, size_type start_idx = 0){
-    //only call destroy kernel *only* if custom destroy function is provided
+    //only call destroy kernel *only* if custom destroy function is provided to 
+    // prevent extra unnecessary kernel call
     if constexpr(::dpct::internal::__has_destroy<Allocator, pointer>::value)
     {
       if (n > 0)
@@ -313,7 +309,7 @@ private:
           cgh.parallel_for(n, [=](sycl::id<1> i) {
             ::dpct::internal::device_allocator_traits<Allocator>::destroy(p + start_idx + i);
           });
-        });
+        }).wait();
       }
     } 
   }
@@ -352,36 +348,33 @@ public:
     other._storage = nullptr;
   }
 
-// TODO: check if this is ok for both random_access_iterators and non random_access_iterators
   template <typename InputIterator>
   device_vector(InputIterator first,
-                typename ::std::enable_if<
-                    internal::is_iterator<InputIterator>::value &&
-                        !::std::is_pointer<InputIterator>::value,
-                    InputIterator>::type last)
+                InputIterator last)
       : _alloc(get_default_queue()) {
     _size = ::std::distance(first, last);
     _set_capacity_and_alloc();
     _construct(first, last);
   }
 
-  template <typename InputIterator>
-  device_vector(InputIterator first,
-                typename ::std::enable_if<::std::is_pointer<InputIterator>::value,
-                                        InputIterator>::type last)
-      : _alloc(get_default_queue()) {
-    _size = ::std::distance(first, last);
-    _set_capacity_and_alloc();
-    if (_size > 0) {
-      auto ptr_type = sycl::get_pointer_type(first, get_default_context());
-      if (ptr_type != sycl::usm::alloc::host &&
-          ptr_type != sycl::usm::alloc::unknown) {
-        _construct(first, last);
-      } else {
-        _construct_from_host(first, last);
-      }
-    }
-  }
+  // template <typename InputIterator>
+  // device_vector(InputIterator first,
+  //               typename ::std::enable_if<::std::is_pointer<InputIterator>::value,
+  //                                       InputIterator>::type last)
+  //     : _alloc(get_default_queue()) {
+  //   _size = ::std::distance(first, last);
+  //   _set_capacity_and_alloc();
+  //   if (_size > 0) {
+  //     auto ptr_type = sycl::get_pointer_type(first, get_default_context());
+  //     _construct(first, last);
+  //     // if (ptr_type != sycl::usm::alloc::host &&
+  //     //     ptr_type != sycl::usm::alloc::unknown) {
+  //     //   _construct(first, last);        
+  //     // } else {
+  //     //   _construct_from_host(first, last);
+  //     // }
+  //   }
+  // }
 
   template <typename OtherAllocator>
   device_vector(const device_vector<T, OtherAllocator> &other)
@@ -393,16 +386,11 @@ public:
   }
 
   template <typename OtherAllocator>
-  device_vector(::std::vector<T, OtherAllocator> &v)
-      : _alloc(get_default_queue()), _size(v.size()) {
-    _set_capacity_and_alloc();
-    _construct_from_host(v.begin(), v.end());
-  }
-
+  device_vector(::std::vector<T, OtherAllocator> &v):device_vector(v.begin(), v.end()){}
   template <typename OtherAllocator>
   device_vector &operator=(const ::std::vector<T, OtherAllocator> &v) {
     resize(v.size());
-    _construct_from_host(v.begin(), v.end());
+    _construct(v.begin(), v.end());
     return *this;
   }
   device_vector &operator=(const device_vector &other) {
