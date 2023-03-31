@@ -363,6 +363,14 @@ public:
     _construct(first, last);
   }
 
+  device_vector(const device_vector &other)
+      : _alloc(get_default_queue()) {
+    _size = other.size();
+    _capacity = other.capacity();
+    _storage = ::std::allocator_traits<Allocator>::allocate(_alloc, _capacity);
+    _construct(other.begin(), other.end());
+  }
+
   template <typename OtherAllocator>
   device_vector(const device_vector<T, OtherAllocator> &other)
       : _alloc(get_default_queue()) {
