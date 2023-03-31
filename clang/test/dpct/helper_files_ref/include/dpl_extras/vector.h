@@ -356,7 +356,8 @@ public:
   }
 
   template <typename InputIterator>
-  device_vector(InputIterator first, InputIterator last)
+  device_vector(InputIterator first, 
+  typename ::std::enable_if_t<dpct::internal::is_iterator<InputIterator>::value, InputIterator> last)
       : _alloc(get_default_queue()) {
     _size = ::std::distance(first, last);
     _set_capacity_and_alloc();
