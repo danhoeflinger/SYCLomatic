@@ -27,6 +27,13 @@ namespace dpct {
 namespace internal {
 
 
+
+//usm_device_allocator is provided here specifically for dpct::device_vector.
+// Warning: It may be dangerous to use usm_device_allocator in other settings,
+// because containers may use the supplied allocator to allocate side
+// information which needs to be available on the host.  Data allocated with
+// this allocator is by definition not available on the host, and would result
+// in an error if accessed from the host without proper handling.
 template <typename T, size_t Alignment = 0>
 class usm_device_allocator {
 public:
@@ -128,7 +135,6 @@ private:
   sycl::property_list MPropList;
 };
 
-//taken from libc++
   template <class, class _Alloc, class ..._Args>
   struct __has_construct_impl : ::std::false_type { };
 
@@ -137,10 +143,11 @@ private:
       (void)std::declval<_Alloc>().construct(std::declval<_Args>()...)
   ), _Alloc, _Args...> : ::std::true_type { };
 
+  //check if the provided allocator has a construct() member function
   template <class _Alloc, class ..._Args>
   struct __has_construct : __has_construct_impl<void, _Alloc, _Args...> { };
 
-  // __has_destroy
+  //check if the provided allocator has a destroy() member function
   template <class _Alloc, class _Pointer, class = void>
   struct __has_destroy : ::std::false_type { };
 
@@ -149,7 +156,6 @@ private:
       (void)std::declval<_Alloc>().destroy(std::declval<_Pointer>())
   )> : ::std::true_type { };
 
-  // end of taken from libc++
 
 
 //device_allocator_traits is a device-friendly subset of the functionality of 
