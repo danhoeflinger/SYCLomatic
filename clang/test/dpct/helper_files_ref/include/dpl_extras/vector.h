@@ -151,9 +151,13 @@ private:
 
   // end of taken from libc++
 
+
+//device_allocator_traits is a device-friendly subset of the functionality of 
+// std::allocator_traits which uses static construct and destroy functions
+// and is usable inside of sycl kernels without passing the allocator to the 
+// kernel.
 template <typename _Allocator>
 struct device_allocator_traits{
-
 
   //apply default constructor if no override is provided
   template <typename DataT>
@@ -190,7 +194,6 @@ struct device_allocator_traits{
   {
     _Allocator::construct(p, arg);
   }
-
 
   //apply default destructor if no destroy override is provided
   template <typename DataT>
