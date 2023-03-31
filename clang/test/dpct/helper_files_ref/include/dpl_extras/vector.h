@@ -26,16 +26,13 @@ namespace dpct {
 
 namespace internal {
 
-
-
-//usm_device_allocator is provided here specifically for dpct::device_vector.
-// Warning: It may be dangerous to use usm_device_allocator in other settings,
-// because containers may use the supplied allocator to allocate side
-// information which needs to be available on the host.  Data allocated with
-// this allocator is by definition not available on the host, and would result
-// in an error if accessed from the host without proper handling.
-template <typename T, size_t Alignment = 0>
-class usm_device_allocator {
+// usm_device_allocator is provided here specifically for dpct::device_vector.
+//  Warning: It may be dangerous to use usm_device_allocator in other settings,
+//  because containers may use the supplied allocator to allocate side
+//  information which needs to be available on the host.  Data allocated with
+//  this allocator is by definition not available on the host, and would result
+//  in an error if accessed from the host without proper handling.
+template <typename T, size_t Alignment = 0> class usm_device_allocator {
 public:
   using value_type = T;
   using propagate_on_container_copy_assignment = std::true_type;
@@ -47,12 +44,12 @@ public:
     typedef usm_device_allocator<U, Alignment> other;
   };
 
-
   usm_device_allocator() = delete;
   usm_device_allocator(const sycl::context &Ctxt, const sycl::device &Dev,
-                const sycl::property_list &PropList = {})
+                       const sycl::property_list &PropList = {})
       : MContext(Ctxt), MDevice(Dev), MPropList(PropList) {}
-  usm_device_allocator(const sycl::queue &Q, const sycl::property_list &PropList = {})
+  usm_device_allocator(const sycl::queue &Q,
+                       const sycl::property_list &PropList = {})
       : MContext(Q.get_context()), MDevice(Q.get_device()),
         MPropList(PropList) {}
   usm_device_allocator(const usm_device_allocator &) = default;
@@ -78,12 +75,13 @@ public:
   /// Allocates memory.
   ///
   /// \param NumberOfElements is a count of elements to allocate memory for.
-  T *allocate(size_t NumberOfElements, const sycl::detail::code_location CodeLoc =
-                                           sycl::detail::code_location::current()) {
+  T *allocate(size_t NumberOfElements,
+              const sycl::detail::code_location CodeLoc =
+                  sycl::detail::code_location::current()) {
 
-    auto Result = reinterpret_cast<T *>(
-        aligned_alloc(getAlignment(), NumberOfElements * sizeof(value_type),
-                      MDevice, MContext, sycl::usm::alloc::device, MPropList, CodeLoc));
+    auto Result = reinterpret_cast<T *>(aligned_alloc(
+        getAlignment(), NumberOfElements * sizeof(value_type), MDevice,
+        MContext, sycl::usm::alloc::device, MPropList, CodeLoc));
     if (!Result) {
       throw sycl::exception(sycl::errc::memory_allocation);
     }
@@ -94,9 +92,9 @@ public:
   ///
   /// \param Ptr is a pointer to memory being deallocated.
   /// \param Size is a number of elements previously passed to allocate.
-  void deallocate(
-      T *Ptr, size_t,
-      const sycl::detail::code_location CodeLoc = sycl::detail::code_location::current()) {
+  void deallocate(T *Ptr, size_t,
+                  const sycl::detail::code_location CodeLoc =
+                      sycl::detail::code_location::current()) {
     if (Ptr) {
       free(Ptr, MContext, CodeLoc);
     }
@@ -105,15 +103,13 @@ public:
   template <class U, size_t AlignmentU>
   friend bool operator==(const usm_device_allocator<T, Alignment> &One,
                          const usm_device_allocator<U, AlignmentU> &Two) {
-    return ((One.MContext == Two.MContext) &&
-            (One.MDevice == Two.MDevice));
+    return ((One.MContext == Two.MContext) && (One.MDevice == Two.MDevice));
   }
 
   template <class U, size_t AlignmentU>
   friend bool operator!=(const usm_device_allocator<T, Alignment> &One,
                          const usm_device_allocator<U, AlignmentU> &Two) {
-    return !((One.MContext == Two.MContext) &&
-             (One.MDevice == Two.MDevice));
+    return !((One.MContext == Two.MContext) && (One.MDevice == Two.MDevice));
   }
 
   template <typename Property> bool has_property() const noexcept {
@@ -125,97 +121,91 @@ public:
   }
 
 private:
-  constexpr size_t getAlignment() const { return sycl::max(alignof(T), Alignment); }
+  constexpr size_t getAlignment() const {
+    return sycl::max(alignof(T), Alignment);
+  }
 
-  template <class U, size_t AlignmentU>
-  friend class usm_device_allocator;
+  template <class U, size_t AlignmentU> friend class usm_device_allocator;
 
   sycl::context MContext;
   sycl::device MDevice;
   sycl::property_list MPropList;
 };
 
-  template <class, class _Alloc, class ..._Args>
-  struct __has_construct_impl : ::std::false_type { };
+template <class, class _Alloc, class... _Args>
+struct __has_construct_impl : ::std::false_type {};
 
-  template <class _Alloc, class ..._Args>
-  struct __has_construct_impl<decltype(
-      (void)std::declval<_Alloc>().construct(std::declval<_Args>()...)
-  ), _Alloc, _Args...> : ::std::true_type { };
+template <class _Alloc, class... _Args>
+struct __has_construct_impl<decltype((void)std::declval<_Alloc>().construct(
+                                std::declval<_Args>()...)),
+                            _Alloc, _Args...> : ::std::true_type {};
 
-  //check if the provided allocator has a construct() member function
-  template <class _Alloc, class ..._Args>
-  struct __has_construct : __has_construct_impl<void, _Alloc, _Args...> { };
+// check if the provided allocator has a construct() member function
+template <class _Alloc, class... _Args>
+struct __has_construct : __has_construct_impl<void, _Alloc, _Args...> {};
 
-  //check if the provided allocator has a destroy() member function
-  template <class _Alloc, class _Pointer, class = void>
-  struct __has_destroy : ::std::false_type { };
+// check if the provided allocator has a destroy() member function
+template <class _Alloc, class _Pointer, class = void>
+struct __has_destroy : ::std::false_type {};
 
-  template <class _Alloc, class _Pointer>
-  struct __has_destroy<_Alloc, _Pointer, decltype(
-      (void)std::declval<_Alloc>().destroy(std::declval<_Pointer>())
-  )> : ::std::true_type { };
+template <class _Alloc, class _Pointer>
+struct __has_destroy<_Alloc, _Pointer,
+                     decltype((void)std::declval<_Alloc>().destroy(
+                         std::declval<_Pointer>()))> : ::std::true_type {};
 
+// device_allocator_traits is a device-friendly subset of the functionality of
+//  std::allocator_traits which uses static construct and destroy functions
+//  and is usable inside of sycl kernels without passing the allocator to the
+//  kernel.
+template <typename _Allocator> struct device_allocator_traits {
 
-
-//device_allocator_traits is a device-friendly subset of the functionality of 
-// std::allocator_traits which uses static construct and destroy functions
-// and is usable inside of sycl kernels without passing the allocator to the 
-// kernel.
-template <typename _Allocator>
-struct device_allocator_traits{
-
-  //apply default constructor if no override is provided
+  // apply default constructor if no override is provided
   template <typename DataT>
   static
-  typename ::std::enable_if_t<!__has_construct<_Allocator, DataT*>::value, void>
-  construct(DataT* p)
-  {
-    ::new((void*)p) DataT();
+      typename ::std::enable_if_t<!__has_construct<_Allocator, DataT *>::value,
+                                  void>
+      construct(DataT *p) {
+    ::new ((void *)p) DataT();
   }
 
-  //use provided default construct call if it exists
+  // use provided default construct call if it exists
   template <typename DataT>
   static
-  typename ::std::enable_if_t<__has_construct<_Allocator, DataT*>::value, void>
-  construct(DataT* p)
-  {
+      typename ::std::enable_if_t<__has_construct<_Allocator, DataT *>::value,
+                                  void>
+      construct(DataT *p) {
     _Allocator::construct(p);
   }
 
-  //apply constructor if no override is provided
+  // apply constructor if no override is provided
   template <typename DataT, typename T_in>
-  static
-  typename ::std::enable_if_t<!__has_construct<_Allocator, DataT*, T_in>::value, void>
-  construct(DataT* p, T_in arg)
-  {
-    ::new((void*)p) DataT(arg);
+  static typename ::std::enable_if_t<
+      !__has_construct<_Allocator, DataT *, T_in>::value, void>
+  construct(DataT *p, T_in arg) {
+    ::new ((void *)p) DataT(arg);
   }
 
-  //use provided construct call if it exists
+  // use provided construct call if it exists
   template <typename DataT, typename T_in>
-  static  
-  typename ::std::enable_if_t<__has_construct<_Allocator, DataT*, T_in>::value, void>
-  construct(DataT* p, T_in arg)
-  {
+  static typename ::std::enable_if_t<
+      __has_construct<_Allocator, DataT *, T_in>::value, void>
+  construct(DataT *p, T_in arg) {
     _Allocator::construct(p, arg);
   }
 
-  //apply default destructor if no destroy override is provided
+  // apply default destructor if no destroy override is provided
   template <typename DataT>
-  static
-  typename ::std::enable_if_t<!__has_destroy<_Allocator, DataT*>::value, void>
-  destroy(DataT* p)
-  {
+  static typename ::std::enable_if_t<!__has_destroy<_Allocator, DataT *>::value,
+                                     void>
+  destroy(DataT *p) {
     p->~DataT();
   }
 
-  //use provided destroy call if it exists
+  // use provided destroy call if it exists
   template <typename DataT>
-  static
-  typename ::std::enable_if_t<__has_destroy<_Allocator, DataT*>::value, void>
-  destroy(DataT* p)
-  {
+  static typename ::std::enable_if_t<__has_destroy<_Allocator, DataT *>::value,
+                                     void>
+  destroy(DataT *p) {
     _Allocator::destroy(p);
   }
 };
@@ -264,80 +254,88 @@ private:
     _storage = ::std::allocator_traits<Allocator>::allocate(_alloc, _capacity);
   }
 
-  void _construct(size_type n, size_type start_idx = 0){
-    if (n > 0)
-    {
+  void _construct(size_type n, size_type start_idx = 0) {
+    if (n > 0) {
       pointer p = _storage;
-      get_default_queue().submit([&](sycl::handler &cgh) {
-        cgh.parallel_for(n, [=](sycl::id<1> i) {
-          ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i);
-        });
-      }).wait();
+      get_default_queue()
+          .submit([&](sycl::handler &cgh) {
+            cgh.parallel_for(n, [=](sycl::id<1> i) {
+              ::dpct::internal::device_allocator_traits<Allocator>::construct(
+                  p + start_idx + i);
+            });
+          })
+          .wait();
     }
   }
 
-  void _construct(size_type n, const T &value, size_type start_idx = 0){
-    if (n > 0)
-    {
+  void _construct(size_type n, const T &value, size_type start_idx = 0) {
+    if (n > 0) {
       pointer p = _storage;
-      get_default_queue().submit([&](sycl::handler &cgh) {
-        cgh.parallel_for(n, [=](sycl::id<1> i) {
-          ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i, value);
-        });
-      }).wait();
+      get_default_queue()
+          .submit([&](sycl::handler &cgh) {
+            cgh.parallel_for(n, [=](sycl::id<1> i) {
+              ::dpct::internal::device_allocator_traits<Allocator>::construct(
+                  p + start_idx + i, value);
+            });
+          })
+          .wait();
     }
   }
 
   template <typename Iter>
-  void _construct(Iter first, Iter last, size_type start_idx = 0){
-    int num_eles = ::std::distance(first,last);
-    if (num_eles > 0)
-    {
-      //this should properly handle host or device input data
-      auto read_input = oneapi::dpl::__ranges::__get_sycl_range<sycl::access_mode::read, Iter>();
+  void _construct(Iter first, Iter last, size_type start_idx = 0) {
+    int num_eles = ::std::distance(first, last);
+    if (num_eles > 0) {
+      // this should properly handle host or device input data
+      auto read_input =
+          oneapi::dpl::__ranges::__get_sycl_range<sycl::access_mode::read,
+                                                  Iter>();
       auto input_rng = read_input(first, last).all_view();
       pointer p = _storage;
-      get_default_queue().submit([&](sycl::handler &cgh) {
-        oneapi::dpl::__ranges::__require_access(cgh, input_rng);
-        cgh.parallel_for(num_eles, [=](sycl::id<1> i) {
-          ::dpct::internal::device_allocator_traits<Allocator>::construct(p + start_idx + i, input_rng[i]);
-        });
-      }).wait();
+      get_default_queue()
+          .submit([&](sycl::handler &cgh) {
+            oneapi::dpl::__ranges::__require_access(cgh, input_rng);
+            cgh.parallel_for(num_eles, [=](sycl::id<1> i) {
+              ::dpct::internal::device_allocator_traits<Allocator>::construct(
+                  p + start_idx + i, input_rng[i]);
+            });
+          })
+          .wait();
     }
   }
 
-  void _destroy(size_type n, size_type start_idx = 0){
-    //only call destroy kernel *only* if custom destroy function is provided to 
-    // prevent extra unnecessary kernel call
-    if constexpr(::dpct::internal::__has_destroy<Allocator, pointer>::value)
-    {
-      if (n > 0)
-      {
+  void _destroy(size_type n, size_type start_idx = 0) {
+    // only call destroy kernel *only* if custom destroy function is provided to
+    //  prevent extra unnecessary kernel call
+    if constexpr (::dpct::internal::__has_destroy<Allocator, pointer>::value) {
+      if (n > 0) {
         pointer p = _storage;
-        get_default_queue().submit([&](sycl::handler &cgh) {
-          cgh.parallel_for(n, [=](sycl::id<1> i) {
-            ::dpct::internal::device_allocator_traits<Allocator>::destroy(p + start_idx + i);
-          });
-        }).wait();
+        get_default_queue()
+            .submit([&](sycl::handler &cgh) {
+              cgh.parallel_for(n, [=](sycl::id<1> i) {
+                ::dpct::internal::device_allocator_traits<Allocator>::destroy(
+                    p + start_idx + i);
+              });
+            })
+            .wait();
       }
-    } 
+    }
   }
-
 
 public:
   template <typename OtherA> operator ::std::vector<T, OtherA>() const {
     auto __tmp = ::std::vector<T, OtherA>(this->size());
     ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-              this->begin(), this->end(), __tmp.begin());
+                this->begin(), this->end(), __tmp.begin());
     return __tmp;
   }
   device_vector()
       : _alloc(get_default_queue()), _size(0), _capacity(_min_capacity()) {
     _set_capacity_and_alloc();
   }
-  ~device_vector() /*= default*/ { 
+  ~device_vector() /*= default*/ {
     _destroy(size());
-    ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity); 
+    ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity);
   }
   explicit device_vector(size_type n) : _alloc(get_default_queue()), _size(n) {
     _set_capacity_and_alloc();
@@ -353,13 +351,12 @@ public:
       : _alloc(get_default_queue()), _size(other.size()),
         _capacity(other.capacity()), _storage(other._storage) {
     other._size = 0;
-    other._capacity = 0; 
+    other._capacity = 0;
     other._storage = nullptr;
   }
 
   template <typename InputIterator>
-  device_vector(InputIterator first,
-                InputIterator last)
+  device_vector(InputIterator first, InputIterator last)
       : _alloc(get_default_queue()) {
     _size = ::std::distance(first, last);
     _set_capacity_and_alloc();
@@ -376,7 +373,8 @@ public:
   }
 
   template <typename OtherAllocator>
-  device_vector(::std::vector<T, OtherAllocator> &v):device_vector(v.begin(), v.end()){}
+  device_vector(::std::vector<T, OtherAllocator> &v)
+      : device_vector(v.begin(), v.end()) {}
   template <typename OtherAllocator>
   device_vector &operator=(const ::std::vector<T, OtherAllocator> &v) {
     resize(v.size());
@@ -419,18 +417,19 @@ public:
       // allocate buffer for new size
       auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc, 2 * n);
       // copy content (old buffer to new buffer)
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                begin(), end(), tmp);
+      ::std::copy(
+          oneapi::dpl::execution::make_device_policy(get_default_queue()),
+          begin(), end(), tmp);
       // deallocate old memory
-      ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity);
+      ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage,
+                                                     _capacity);
       _storage = tmp;
       _capacity = 2 * n;
     }
   }
   void resize(size_type new_size, const T &x = T()) {
     reserve(new_size);
-    if (new_size > size())
-    {
+    if (new_size > size()) {
       _construct(new_size - size(), x, size());
     }
     _size = new_size;
@@ -448,13 +447,15 @@ public:
   void shrink_to_fit(void) {
     if (_size != capacity()) {
       size_type tmp_capacity = ::std::max(_size, _min_capacity());
-      auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc,tmp_capacity);
+      auto tmp =
+          ::std::allocator_traits<Allocator>::allocate(_alloc, tmp_capacity);
       if (_size > 0) {
         ::std::copy(
             oneapi::dpl::execution::make_device_policy(get_default_queue()),
             begin(), end(), tmp);
       }
-      ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage, _capacity);
+      ::std::allocator_traits<Allocator>::deallocate(_alloc, _storage,
+                                                     _capacity);
       _storage = tmp;
       _capacity = tmp_capacity;
     }
@@ -462,20 +463,22 @@ public:
   void assign(size_type n, const T &x) {
     resize(n);
     if (_size > 0) {
-      ::std::fill(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                begin(), begin() + n, x);
+      ::std::fill(
+          oneapi::dpl::execution::make_device_policy(get_default_queue()),
+          begin(), begin() + n, x);
     }
   }
   template <typename InputIterator>
   void
   assign(InputIterator first,
          typename ::std::enable_if<internal::is_iterator<InputIterator>::value,
-                                 InputIterator>::type last) {
+                                   InputIterator>::type last) {
     auto n = ::std::distance(first, last);
     resize(n);
     if (_size > 0) {
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                first, last, begin());
+      ::std::copy(
+          oneapi::dpl::execution::make_device_policy(get_default_queue()),
+          first, last, begin());
     }
   }
   void clear(void) { _size = 0; }
@@ -498,14 +501,14 @@ public:
     auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc, m);
     // copy remainder to temporary buffer.
     ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-              last, end(), tmp);
+                last, end(), tmp);
 
     auto position = ::std::distance(begin(), first);
     _destroy(n, position);
 
     // override (erase) subsequence in storage.
     ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-              tmp, tmp + m, first);
+                tmp, tmp + m, first);
     ::std::allocator_traits<Allocator>::deallocate(_alloc, tmp, m);
     _size -= n;
     return begin() + first.get_idx() + n;
@@ -527,8 +530,9 @@ public:
       // will throw if position is not inside active vector
       auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc, m);
       // copy remainder
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                position, end(), tmp);
+      ::std::copy(
+          oneapi::dpl::execution::make_device_policy(get_default_queue()),
+          position, end(), tmp);
 
       resize(size() + n);
       // resizing might invalidate position
@@ -536,8 +540,9 @@ public:
 
       _construct(n, x, position.get_idx());
 
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                tmp, tmp + m, position + n);
+      ::std::copy(
+          oneapi::dpl::execution::make_device_policy(get_default_queue()), tmp,
+          tmp + m, position + n);
       ::std::allocator_traits<Allocator>::deallocate(_alloc, tmp, m);
     }
   }
@@ -545,20 +550,22 @@ public:
   void
   insert(iterator position, InputIterator first,
          typename ::std::enable_if<internal::is_iterator<InputIterator>::value,
-                                 InputIterator>::type last) {
+                                   InputIterator>::type last) {
     auto n = ::std::distance(first, last);
     if (position == end()) {
       resize(size() + n);
       _construct(first, last, size() - n);
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                first, last, end());
+      ::std::copy(
+          oneapi::dpl::execution::make_device_policy(get_default_queue()),
+          first, last, end());
     } else {
       auto m = ::std::distance(position, end());
       // will throw if position is not inside active vector
-      auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc,m);
+      auto tmp = ::std::allocator_traits<Allocator>::allocate(_alloc, m);
 
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                position, end(), tmp);
+      ::std::copy(
+          oneapi::dpl::execution::make_device_policy(get_default_queue()),
+          position, end(), tmp);
 
       resize(size() + n);
       // resizing might invalidate position
@@ -566,8 +573,9 @@ public:
 
       _construct(first, last, position.get_idx());
 
-      ::std::copy(oneapi::dpl::execution::make_device_policy(get_default_queue()),
-                tmp, tmp + m, position + n);
+      ::std::copy(
+          oneapi::dpl::execution::make_device_policy(get_default_queue()), tmp,
+          tmp + m, position + n);
       ::std::allocator_traits<Allocator>::deallocate(_alloc, tmp, m);
     }
   }
