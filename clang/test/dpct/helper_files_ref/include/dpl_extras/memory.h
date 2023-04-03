@@ -87,7 +87,7 @@ template <typename T> struct device_reference {
     return *this;
   };
   device_reference &operator--() {
-    __assign_from(__get_value()+1);
+    __assign_from(__get_value()-1);
     return *this;
   };
   device_reference operator++(int) {
