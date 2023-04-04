@@ -432,8 +432,8 @@ public:
       ::std::swap(_alloc, v._alloc);
     }
   }
-  reference operator[](size_type n) { return _storage[n]; }
-  const_reference operator[](size_type n) const { return _storage[n]; }
+  reference operator[](size_type n) { return reference(_storage + n); }
+  const_reference operator[](size_type n) const { return reference(_storage + n); }
   void reserve(size_type n) {
     if (n > capacity()) {
       // allocate buffer for new size
@@ -460,10 +460,10 @@ public:
     return ::std::numeric_limits<size_type>::max() / sizeof(T);
   }
   size_type capacity() const { return _capacity; }
-  const_reference front() const { return *begin(); }
-  reference front() { return *begin(); }
-  const_reference back(void) const { return *(end() - 1); }
-  reference back(void) { return *(end() - 1); }
+  const_reference front() const { return reference(begin()); }
+  reference front() { return reference(begin()); }
+  const_reference back(void) const { return reference(end() - 1); }
+  reference back(void) { return reference(end() - 1); }
   pointer data(void) { return _storage; }
   const_pointer data(void) const { return _storage; }
   void shrink_to_fit(void) {
