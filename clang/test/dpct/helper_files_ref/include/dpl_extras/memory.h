@@ -146,12 +146,9 @@ template <typename T> struct device_reference {
     *this = (input);
     input = (tmp);
 #else
-    sycl::queue default_queue = dpct::get_default_queue();
-    default_queue.submit([&](sycl::handler& h) {
-        h.single_task([=]() {
-          this->swap(input);
-        }).wait();
-    });
+    T tmp = __get_value();
+    __assign_from(input.__get_value());
+    input.__assign_from(tmp);
 #endif
   }
   T &value;
