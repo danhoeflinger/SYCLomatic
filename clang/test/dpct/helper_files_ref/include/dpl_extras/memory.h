@@ -60,8 +60,9 @@ template <typename T> struct device_reference {
   template <typename OtherT>
   device_reference(const device_reference<OtherT> &input)
       : value(input.value) {}
-  device_reference(const pointer &input) : value((*input).value) {}
-  device_reference(value_type &input) : value(input) {}
+  device_reference(const pointer &input) : value(input.get()) {}
+  device_reference(value_type *input) : value(input) {}
+  device_reference(value_type &input) : value(&input) {}
   template <typename OtherT>
   device_reference &operator=(const device_reference<OtherT> &input) {
     __assign_from(input.__get_value());
@@ -72,7 +73,7 @@ template <typename T> struct device_reference {
     value = input.value;
 #else
     sycl::queue default_queue = dpct::get_default_queue();
-    default_queue.copy(&value, input.value, sizeof(value_type)).wait();
+    default_queue.copy(value, input.value, sizeof(value_type)).wait();
 #endif
     return *this;
   };
@@ -80,8 +81,10 @@ template <typename T> struct device_reference {
     __assign_from(x);
     return *this;
   };
-  pointer operator&() const { return pointer(&value); };
+  pointer operator&() const { return pointer(value); };
+
   operator value_type() const { return __get_value(); }
+
   device_reference &operator++() {
     __assign_from(__get_value()+1);
     return *this;
@@ -151,33 +154,33 @@ template <typename T> struct device_reference {
     input.__assign_from(tmp);
 #endif
   }
-  T &value;
+  value_type *value;
 private: 
 #ifdef __SYCL_DEVICE_ONLY //call from the device
   device_reference &__assign_from(const value_type& from)
   {
-    value = from;
+    *value = from;
     return *this;
   }
 
   value_type __get_value() const
   {
-    return T(value);
+    return *value;
   }
 #else // call from the host
   device_reference &__assign_from(const value_type& from)
   {
     sycl::queue default_queue = dpct::get_default_queue();
-    default_queue.fill(&value, from, 1);
+    default_queue.fill(value, from, 1);
     return *this;
   }
 
   value_type __get_value() const
   {
-    T tmp;
+    value_type tmp;
     sycl::queue default_queue = dpct::get_default_queue();
-    default_queue.memcpy(&tmp, &value, sizeof(T)*1).wait();
-    return T(tmp);
+    default_queue.memcpy(&tmp, value, sizeof(value_type)*1).wait();
+    return value_type(tmp);
   }
 
 #endif
