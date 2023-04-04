@@ -156,7 +156,7 @@ template <typename T> struct device_reference {
   }
   value_type *value;
 private: 
-#ifdef __SYCL_DEVICE_ONLY //call from the device
+#ifdef __SYCL_DEVICE_ONLY__ //call from the device
   device_reference &__assign_from(const value_type& from)
   {
     *value = from;
