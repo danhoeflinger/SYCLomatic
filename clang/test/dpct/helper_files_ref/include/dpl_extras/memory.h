@@ -76,7 +76,8 @@ template <typename T> struct device_reference {
 
   operator value_type() const { return __get_value(); }
 
-  virtual void PlusPlus_helper()
+  __attribute__((__used__))
+  void PlusPlus_helper()
   {
     value_type *tmp = value;
     sycl::queue default_queue = dpct::get_default_queue();
@@ -98,7 +99,8 @@ template <typename T> struct device_reference {
   };
 
 
-  virtual void MinusMinus_helper()
+  __attribute__((__used__))
+  void MinusMinus_helper()
   {
     value_type *tmp = value;
     sycl::queue default_queue = dpct::get_default_queue();
@@ -130,7 +132,8 @@ template <typename T> struct device_reference {
     return ref;
   };
 
-  virtual void PlusEqual_helper(const value_type &input)
+  __attribute__((__used__))
+  void PlusEqual_helper(const value_type &input)
   {
     value_type *tmp = value;
     sycl::queue default_queue = dpct::get_default_queue();
@@ -151,7 +154,8 @@ template <typename T> struct device_reference {
    return *this;
   };
 
-  virtual void MinusEqual_helper(const value_type &input)
+  __attribute__((__used__))
+  void MinusEqual_helper(const value_type &input)
   {
     value_type *tmp = value;
     sycl::queue default_queue = dpct::get_default_queue();
@@ -172,7 +176,8 @@ template <typename T> struct device_reference {
     return *this;
   };
 
-  virtual void TimesEqual_helper(const value_type &input)
+  __attribute__((__used__))
+  void TimesEqual_helper(const value_type &input)
   {
     value_type *tmp = value;
     sycl::queue default_queue = dpct::get_default_queue();
@@ -193,7 +198,8 @@ template <typename T> struct device_reference {
     return *this;
   }
 
-  virtual void DivideEqual_helper(const value_type &input)
+  __attribute__((__used__))
+  void DivideEqual_helper(const value_type &input)
   {
     value_type *tmp = value;
     sycl::queue default_queue = dpct::get_default_queue();
@@ -214,7 +220,8 @@ template <typename T> struct device_reference {
     return *this;
   }
 
-  virtual void ModEqual_helper(const value_type &input)
+  __attribute__((__used__))
+  void ModEqual_helper(const value_type &input)
   {
     value_type *tmp = value;
     sycl::queue default_queue = dpct::get_default_queue();
@@ -234,8 +241,9 @@ template <typename T> struct device_reference {
 #endif
     return *this;
   }
-
-  virtual void AndEqual_helper(const value_type &input)
+  
+  __attribute__((__used__))
+  void AndEqual_helper(const value_type &input)
   {
     value_type *tmp = value;
 
@@ -257,7 +265,8 @@ template <typename T> struct device_reference {
     return *this;
   }
 
-  virtual void OrEqual_helper(const value_type &input)
+  __attribute__((__used__))
+  void OrEqual_helper(const value_type &input)
   {
     value_type *tmp = value;
 
@@ -279,7 +288,8 @@ template <typename T> struct device_reference {
     return *this;
   };
 
-  virtual void CrossEqual_helper(const value_type &input)
+  __attribute__((__used__))
+  void CrossEqual_helper(const value_type &input)
   {
     value_type *tmp = value;
     sycl::queue default_queue = dpct::get_default_queue();
@@ -299,7 +309,8 @@ template <typename T> struct device_reference {
     return *this;
   };
 
-  virtual void ShiftLeftEqual_helper(const int &input)
+  __attribute__((__used__))
+  void ShiftLeftEqual_helper(const int &input)
   {
     value_type *tmp = value;
 
@@ -317,11 +328,11 @@ template <typename T> struct device_reference {
 #else
     ShiftLeftEqual_helper(input);
 #endif
-    __apply_binary<dv_ShiftLeftEqual>([=] (const value_type& a, const value_type& b){return a << b;}, &value, input);
     return *this;
   };
 
-  virtual void ShiftRightEqual_helper(const int &input)
+  __attribute__((__used__))
+  void ShiftRightEqual_helper(const int &input)
   {
     value_type *tmp = value;
 
@@ -343,7 +354,8 @@ template <typename T> struct device_reference {
     return *this;
   };
 
-  virtual void
+  __attribute__((__used__))
+  void
   swap_helper(device_reference &input)
   {
     value_type *my_val = value;
@@ -369,7 +381,8 @@ template <typename T> struct device_reference {
 #endif
   }
 
-  virtual void operator_equal_helper(const device_reference &input)
+  __attribute__((__used__))
+  void operator_equal_helper(const device_reference &input)
   {
     value_type *tmp = value;
     value_type *input_val = input.value;
@@ -393,7 +406,8 @@ template <typename T> struct device_reference {
   value_type *value;
 private: 
 
-  virtual void assign_from_helper(const value_type& from)
+  __attribute__((__used__))
+  void assign_from_helper(const value_type& from)
   {
     dpct::get_default_queue().fill(value, from, 1);
   }
@@ -408,8 +422,8 @@ private:
     return *this;
   }
 
-
-  virtual value_type get_value_helper() const
+  __attribute__((__used__))
+  value_type get_value_helper() const
   {
       value_type tmp;
       sycl::queue default_queue = dpct::get_default_queue();
