@@ -68,15 +68,6 @@ template <typename T> struct device_reference {
     __assign_from(input.__get_value());
     return *this;
   };
-  device_reference &operator=(const device_reference &input) {
-#ifdef __SYCL_DEVICE_ONLY__
-    value = input.value;
-#else
-    sycl::queue default_queue = dpct::get_default_queue();
-    default_queue.copy(value, input.value, sizeof(value_type)).wait();
-#endif
-    return *this;
-  };
   device_reference &operator=(const value_type &x) {
     __assign_from(x);
     return *this;
@@ -143,47 +134,75 @@ template <typename T> struct device_reference {
      __assign_from(__get_value() >> input);
     return *this;
   };
+
+  virtual void
+  swap_helper(device_reference &input)
+  {
+    T tmp = __get_value();
+    __assign_from(input.__get_value());
+    input.__assign_from(tmp);
+  }
+
   void swap(device_reference &input) {
 #ifdef __SYCL_DEVICE_ONLY__
     T tmp = (*this);
     *this = (input);
     input = (tmp);
 #else
-    T tmp = __get_value();
-    __assign_from(input.__get_value());
-    input.__assign_from(tmp);
+    swap_helper(input);
 #endif
   }
+
+  virtual void operator_equal_helper(const device_reference &input)
+  {
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.copy(value, input.value, sizeof(value_type)).wait();
+  }
+
+  device_reference &operator=(const device_reference &input) {
+#ifdef __SYCL_DEVICE_ONLY__
+    value = input.value;
+#else
+    operator_equal_helper(input);
+#endif
+    return *this;
+  };
+
   value_type *value;
 private: 
+
+  virtual void assign_from_helper(const value_type& from)
+  {
+    dpct::get_default_queue().fill(value, from, 1);
+  }
+
+  device_reference &__assign_from(const value_type& from)
+  {
 #ifdef __SYCL_DEVICE_ONLY__ //call from the device
-  device_reference &__assign_from(const value_type& from)
-  {
     *value = from;
-    return *this;
-  }
-
-  value_type __get_value() const
-  {
-    return *value;
-  }
-#else // call from the host
-  device_reference &__assign_from(const value_type& from)
-  {
-    sycl::queue default_queue = dpct::get_default_queue();
-    default_queue.fill(value, from, 1);
-    return *this;
-  }
-
-  value_type __get_value() const
-  {
-    value_type tmp;
-    sycl::queue default_queue = dpct::get_default_queue();
-    default_queue.memcpy(&tmp, value, sizeof(value_type)*1).wait();
-    return value_type(tmp);
-  }
-
+#else
+    assign_from_helper(from);
 #endif
+    return *this;
+  }
+
+
+  virtual value_type get_value_helper() const
+  {
+      value_type tmp;
+      sycl::queue default_queue = dpct::get_default_queue();
+      default_queue.memcpy(&tmp, value, sizeof(value_type)*1).wait();
+      return value_type(tmp);
+  }
+  value_type __get_value() const
+  {
+#ifdef __SYCL_DEVICE_ONLY__ //call from the device
+    return *value;
+#else // call from the host
+    return get_value_helper();
+#endif
+  }
+
 };
 
 template <typename T>
