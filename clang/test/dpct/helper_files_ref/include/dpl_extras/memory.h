@@ -76,12 +76,47 @@ template <typename T> struct device_reference {
 
   operator value_type() const { return __get_value(); }
 
+  virtual void PlusPlus_helper()
+  {
+    value_type *tmp = value;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_PlusPlus, value_type>>([=] () {
+          (*tmp)++;
+        });
+      })
+      .wait();
+  }
+
   device_reference &operator++() {
-    __assign_from(__get_value()+1);
+#if __SYCL_DEVICE_ONLY__
+    (*value)++;
+#else
+    PlusPlus_helper();
+#endif
     return *this;
   };
+
+
+  virtual void MinusMinus_helper()
+  {
+    value_type *tmp = value;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_MinusMinus, value_type>>([=] () {
+          (*tmp)--;
+        });
+      })
+      .wait();
+  }
+
+
   device_reference &operator--() {
-    __assign_from(__get_value()-1);
+#if __SYCL_DEVICE_ONLY__
+    (*value)--;
+#else
+    MinusMinus_helper();
+#endif
     return *this;
   };
   device_reference operator++(int) {
@@ -94,60 +129,241 @@ template <typename T> struct device_reference {
     --(*this);
     return ref;
   };
-  device_reference &operator+=(const T &input) {
-     __assign_from(__get_value() + input);
+
+  virtual void PlusEqual_helper(const value_type &input)
+  {
+    value_type *tmp = value;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_PlusEqual, value_type>>([=] () {
+          (*tmp)+=input;
+        });
+      })
+      .wait();
+  }
+
+  device_reference &operator+=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value)+=input;
+#else
+    PlusEqual_helper(input);
+#endif
    return *this;
   };
-  device_reference &operator-=(const T &input) {
-     __assign_from(__get_value() - input);
+
+  virtual void MinusEqual_helper(const value_type &input)
+  {
+    value_type *tmp = value;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_MinusEqual, value_type>>([=] () {
+          (*tmp)-=input;
+        });
+      })
+      .wait();
+  }
+
+  device_reference &operator-=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value)-=input;
+#else
+    MinusEqual_helper(input);
+#endif
     return *this;
   };
-  device_reference &operator*=(const T &input) {
-     __assign_from(__get_value() * input);
+
+  virtual void TimesEqual_helper(const value_type &input)
+  {
+    value_type *tmp = value;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_TimesEqual, value_type>>([=] () {
+          (*tmp) *= input;
+        });
+      })
+      .wait();
+  }
+
+  device_reference &operator*=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value) *= input;
+#else
+    TimesEqual_helper(input);
+#endif
+    return *this;
+  }
+
+  virtual void DivideEqual_helper(const value_type &input)
+  {
+    value_type *tmp = value;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_DivideEqual, value_type>>([=] () {
+          (*tmp) /= input;
+        });
+      })
+      .wait();
+  }
+
+  device_reference &operator/=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value)/=input;
+#else
+    DivideEqual_helper(input);
+#endif
+    return *this;
+  }
+
+  virtual void ModEqual_helper(const value_type &input)
+  {
+    value_type *tmp = value;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_ModEqual, value_type>>([=] () {
+          (*tmp) %= input;
+        });
+      })
+      .wait();
+  }
+
+  device_reference &operator%=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value) %= input;
+#else
+    ModEqual_helper(input);
+#endif
+    return *this;
+  }
+
+  virtual void AndEqual_helper(const value_type &input)
+  {
+    value_type *tmp = value;
+
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_AndEqual, value_type>>([=] () {
+          (*tmp) &= input;
+        });
+      })
+      .wait();
+  }
+
+  device_reference &operator&=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value) &= input;
+#else
+    AndEqual_helper(input);
+#endif
+    return *this;
+  }
+
+  virtual void OrEqual_helper(const value_type &input)
+  {
+    value_type *tmp = value;
+
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_OrEqual, value_type>>([=] () {
+          (*tmp)|=input;
+        });
+      })
+      .wait();
+  }
+
+  device_reference &operator|=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value)|=input;
+#else
+    OrEqual_helper(input);
+#endif
     return *this;
   };
-  device_reference &operator/=(const T &input) {
-     __assign_from(__get_value() / input);
+
+  virtual void CrossEqual_helper(const value_type &input)
+  {
+    value_type *tmp = value;
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_CrossEqual, value_type>>([=] () {
+          (*tmp)^=input;
+        });
+      })
+      .wait();
+  }
+  device_reference &operator^=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value)^=input;
+#else
+    CrossEqual_helper(input);
+#endif
     return *this;
   };
-  device_reference &operator%=(const T &input) {
-     __assign_from(__get_value() % input);
+
+  virtual void ShiftLeftEqual_helper(const int &input)
+  {
+    value_type *tmp = value;
+
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_ShiftLeftEqual, value_type>>([=] () {
+          (*tmp)<<=input;
+        });
+      })
+      .wait();
+  }
+  device_reference &operator<<=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value)<<=input;
+#else
+    ShiftLeftEqual_helper(input);
+#endif
+    __apply_binary<dv_ShiftLeftEqual>([=] (const value_type& a, const value_type& b){return a << b;}, &value, input);
     return *this;
   };
-  device_reference &operator&=(const T &input) {
-     __assign_from(__get_value() & input);
-    return *this;
-  };
-  device_reference &operator|=(const T &input) {
-     __assign_from(__get_value() | input);
-    return *this;
-  };
-  device_reference &operator^=(const T &input) {
-     __assign_from(__get_value() ^ input);
-    return *this;
-  };
-  device_reference &operator<<=(const T &input) {
-     __assign_from(__get_value() << input);
-    return *this;
-  };
-  device_reference &operator>>=(const T &input) {
-     __assign_from(__get_value() >> input);
+
+  virtual void ShiftRightEqual_helper(const int &input)
+  {
+    value_type *tmp = value;
+
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_ShiftRightEqual, value_type>>([=] () {
+          (*tmp)>>=input;
+        });
+      })
+      .wait();
+  }
+
+  device_reference &operator>>=(const value_type &input) {
+#if __SYCL_DEVICE_ONLY__
+    (*value)>>=input;
+#else
+    ShiftRightEqual_helper(input);
+#endif
     return *this;
   };
 
   virtual void
   swap_helper(device_reference &input)
   {
-    T tmp = __get_value();
-    __assign_from(input.__get_value());
-    input.__assign_from(tmp);
+    value_type *my_val = value;
+    value_type *input_val = input.value;
+
+    sycl::queue default_queue = dpct::get_default_queue();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_swap, value_type>>([=]() {
+          T tmp = *my_val;
+          *my_val = *(input_val);
+          *(input_val) = tmp;
+        });
+    }).wait();
   }
 
   void swap(device_reference &input) {
 #ifdef __SYCL_DEVICE_ONLY__
-    T tmp = (*this);
-    *this = (input);
-    input = (tmp);
+    T tmp = *value;
+    *value = *(input.value);
+    *(input.value) = tmp;
 #else
     swap_helper(input);
 #endif
@@ -155,13 +371,19 @@ template <typename T> struct device_reference {
 
   virtual void operator_equal_helper(const device_reference &input)
   {
+    value_type *tmp = value;
+    value_type *input_val = input.value;
     sycl::queue default_queue = dpct::get_default_queue();
-    default_queue.copy(value, input.value, sizeof(value_type)).wait();
+    default_queue.submit([&](sycl::handler& h) {
+        h.single_task<dpct_kernel_name<class dv_equal_op, value_type>>([=]() {
+          *tmp = *(input_val);
+        });
+    }).wait();
   }
 
   device_reference &operator=(const device_reference &input) {
 #ifdef __SYCL_DEVICE_ONLY__
-    value = input.value;
+    *value = *(input.value);
 #else
     operator_equal_helper(input);
 #endif
