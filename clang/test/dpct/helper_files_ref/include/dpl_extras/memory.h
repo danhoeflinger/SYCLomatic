@@ -662,9 +662,6 @@ public:
   operator ValueType *() { return ptr; }
   operator ValueType *() const { return ptr; }
 
-  ValueType &operator[](difference_type idx) { return ptr[idx]; }
-  ValueType &operator[](difference_type idx) const { return ptr[idx]; }
-
   Derived operator+(difference_type forward) const {
     return Derived{ptr + forward};
   }
@@ -693,7 +690,7 @@ public:
   using value_type = T;
   using difference_type = std::make_signed<std::size_t>::type;
   using pointer = T *;
-  using reference = T &;
+  using reference = device_reference<value_type>;
   using const_reference = const T &;
   using iterator_category = std::random_access_iterator_tag;
   using is_hetero = std::false_type;         // required
@@ -707,6 +704,9 @@ public:
     this->ptr = static_cast<device_pointer<T>>(in).ptr;
     return *this;
   }
+
+  reference operator[](difference_type idx) { return reference(this->ptr + idx); }
+  reference operator[](difference_type idx) const { return reference(this->ptr + idx); }
 
   // include operators from base class
   using base_type::operator++;
@@ -739,7 +739,7 @@ public:
   using value_type = dpct::byte_t;
   using difference_type = std::make_signed<std::size_t>::type;
   using pointer = void *;
-  using reference = value_type &;
+  using reference = device_reference<value_type>;
   using const_reference = const value_type &;
   using iterator_category = std::random_access_iterator_tag;
   using is_hetero = std::false_type;         // required
@@ -752,6 +752,9 @@ public:
   pointer get() const { return static_cast<pointer>(this->ptr); }
   operator void *() { return this->ptr; }
   operator void *() const { return this->ptr; }
+
+  reference operator[](difference_type idx) { return reference(this->ptr + idx); }
+  reference operator[](difference_type idx) const { return reference(this->ptr + idx); }
 
   // include operators from base class
   using base_type::operator++;
@@ -773,6 +776,8 @@ public:
     return *this;
   }
 };
+
+
 #endif
 
 #ifdef DPCT_USM_LEVEL_NONE
@@ -897,10 +902,10 @@ public:
     return *this;
   }
 
-  reference operator*() const { return *(Base::ptr + idx); }
+  reference operator*() const { return reference(Base::ptr + idx); }
 
-  reference operator[](difference_type i) { return Base::ptr[idx + i]; }
-  reference operator[](difference_type i) const { return Base::ptr[idx + i]; }
+  reference operator[](difference_type i) { return reference(Base::ptr + idx + i); }
+  reference operator[](difference_type i) const { return reference(Base::ptr + idx + i); }
   device_iterator &operator++() {
     ++idx;
     return *this;
@@ -1034,5 +1039,11 @@ template <typename T> T &get_raw_reference(T &ref) {
 }
 
 } // namespace dpct
+
+template<typename T>
+struct ::sycl::is_device_copyable<dpct::device_pointer<T>> : std::true_type {};
+template<typename T>
+struct ::sycl::is_device_copyable<dpct::device_iterator<T>> : std::true_type {};
+
 
 #endif
