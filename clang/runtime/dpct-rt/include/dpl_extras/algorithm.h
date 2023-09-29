@@ -1123,23 +1123,17 @@ inline void sort_only_pairs(Policy &&policy, Iter1 keys_in, Iter2 keys_out,
   auto zip_input = oneapi::dpl::zip_iterator(keys_in, values_in);
   auto zip_output = oneapi::dpl::zip_iterator(keys_out, values_out);
 
-  // Use of the comparison operator that is not simply std::greater() or
-  // std::less() will result in
-  //  not using radix sort which will cost some performance.  However, this is
-  //  necessary to select the key from the zipped pair.
-  auto load_val = [=](const auto a) { return std::get<0>(a); };
+  ::std::copy(policy, zip_input, zip_input + n, zip_output);
 
-  auto partial_sort_with_comp = [&](const auto &comp) {
-    return oneapi::dpl::partial_sort_copy(
-        std::forward<Policy>(policy), zip_input, zip_input + n, zip_output,
-        zip_output + n, [=](const auto a, const auto b) {
-          return comp(load_val(a), load_val(b));
-        });
+  auto sort_with_comp = [&](const auto &comp) {
+    return  oneapi::dpl::sort_by_key(::std::forward<Policy>(policy), keys_out,
+                                     keys_out + n, values_out, comp);
   };
+
   if (descending)
-    partial_sort_with_comp(::std::greater<key_t_value_t>());
+    sort_with_comp(::std::greater<key_t_value_t>());
   else
-    partial_sort_with_comp(::std::less<key_t_value_t>());
+    sort_with_comp(::std::less<key_t_value_t>());
 }
 
 // overload for Iter2 != std::nullptr_t
