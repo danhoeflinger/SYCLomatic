@@ -1126,8 +1126,8 @@ inline void sort_only_pairs(Policy &&policy, Iter1 keys_in, Iter2 keys_out,
   ::std::copy(policy, zip_input, zip_input + n, zip_output);
 
   auto sort_with_comp = [&](const auto &comp) {
-    return  oneapi::dpl::sort_by_key(::std::forward<Policy>(policy), keys_out,
-                                     keys_out + n, values_out, comp);
+    return oneapi::dpl::sort_by_key(::std::forward<Policy>(policy), keys_out,
+                                    keys_out + n, values_out, comp);
   };
 
   if (descending)
